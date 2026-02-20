@@ -14,11 +14,21 @@ interface UploadedFile {
   };
 }
 
+interface SummaryData {
+  fileName: string;
+  summary: string;
+  wordCount: number;
+  characterCount: number;
+}
+
 export default function FileUploader() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,7 +57,7 @@ export default function FileUploader() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || '上传失败');
+        throw new Error(error.error || 'Upload failed');
       }
 
       const data = await response.json();
@@ -71,7 +81,7 @@ export default function FileUploader() {
   const loadFiles = async () => {
     try {
       const response = await fetch('/api/documents');
-      if (!response.ok) throw new Error('获取文件列表失败');
+      if (!response.ok) throw new Error('Failed to load file list');
       
       const data = await response.json();
       setFiles(data.files || []);
@@ -90,13 +100,40 @@ export default function FileUploader() {
         body: JSON.stringify({ fileName }),
       });
 
-      if (!response.ok) throw new Error('删除失败');
+      if (!response.ok) throw new Error('Delete failed');
 
-      setMessage({ type: 'success', text: '✓ 文件已删除' });
+      setMessage({ type: 'success', text: '✓ File deleted successfully' });
       await loadFiles();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Delete failed';
       setMessage({ type: 'error', text: `✗ ${errorMessage}` });
+    }
+  };
+
+  const summarizeFile = async (fileName: string) => {
+    setSummaryLoading(fileName);
+    setShowSummary(true);
+    
+    try {
+      const response = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate summary');
+      }
+
+      const data = await response.json();
+      setSummaryData(data);
+      setMessage({ type: 'success', text: '✓ AI summary generated successfully' });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Summarize failed';
+      setMessage({ type: 'error', text: `✗ ${errorMessage}` });
+      setShowSummary(false);
+    } finally {
+      setSummaryLoading(null);
     }
   };
 
@@ -239,14 +276,21 @@ export default function FileUploader() {
                           : 'Unknown'}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => summarizeFile(file.name)}
+                            disabled={summaryLoading === file.name}
+                            className="inline-flex items-center space-x-1 bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Generate AI summary"
+                          >
+                            <span>{summaryLoading === file.name ? 'Generating...' : 'Get Summary'}</span>
+                          </button>
                           <a
                             href={file.publicUrl}
                             download
                             className="inline-flex items-center space-x-1 bg-pink-100 hover:bg-pink-200 text-pink-700 px-3 py-2 rounded transition-colors"
                             title="Download file"
                           >
-                            <span>⬇️</span>
                             <span>Download</span>
                           </a>
                           <button
@@ -254,7 +298,6 @@ export default function FileUploader() {
                             className="inline-flex items-center space-x-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-2 rounded transition-colors"
                             title="Delete file"
                           >
-                            <span>🗑️</span>
                             <span>Delete</span>
                           </button>
                         </div>
@@ -270,8 +313,63 @@ export default function FileUploader() {
         {/* Footer info */}
         <div className="mt-8 text-center text-sm text-gray-600">
           <p>Tip: Files are stored in Supabase object storage.</p>
-          <p className="mt-2">Supports multi-file upload, download and delete.</p>
+          <p className="mt-2">Supports multi-file upload, download, delete, and AI summarization.</p>
         </div>
+
+        {/* AI Summary Modal */}
+        {showSummary && summaryData && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+              <div className="bg-blue-600 text-white p-6">
+                <h2 className="text-2xl font-bold">AI Summary</h2>
+                <p className="text-blue-100 mt-1">{summaryData.fileName}</p>
+              </div>
+              
+              <div className="p-6">
+                <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                  <p className="text-gray-800 whitespace-pre-wrap font-mono text-sm leading-relaxed">
+                    {summaryData.summary}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <p className="text-gray-600 text-sm">Word Count</p>
+                    <p className="text-2xl font-bold text-blue-600">{summaryData.wordCount}</p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <p className="text-gray-600 text-sm">Character Count</p>
+                    <p className="text-2xl font-bold text-green-600">{summaryData.characterCount}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowSummary(false);
+                      setSummaryData(null);
+                    }}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (summaryData) {
+                        const text = `AI Summary for ${summaryData.fileName}\n\n${summaryData.summary}`;
+                        navigator.clipboard.writeText(text);
+                        setMessage({ type: 'success', text: '✓ Summary copied to clipboard' });
+                      }
+                    }}
+                    className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                  >
+                    Copy to Clipboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

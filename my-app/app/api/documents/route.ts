@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json(
-        { error: '没有上传文件' },
+        { error: 'No file uploaded' },
         { status: 400 }
       );
     }
@@ -32,9 +32,9 @@ export async function POST(req: NextRequest) {
       });
 
     if (error) {
-      console.error('Supabase上传错误:', error);
+      console.error('Supabase upload error:', error);
       return NextResponse.json(
-        { error: `上传失败: ${error.message}` },
+        { error: `Upload failed: ${error.message}` },
         { status: 400 }
       );
     }
@@ -55,9 +55,9 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('API错误:', error);
+    console.error('API error:', error);
     return NextResponse.json(
-      { error: '服务器错误' },
+      { error: 'Server error' },
       { status: 500 }
     );
   }
@@ -76,7 +76,7 @@ export async function GET() {
 
     if (error) {
       return NextResponse.json(
-        { error: `获取文件列表失败: ${error.message}` },
+        { error: `Failed to retrieve file list: ${error.message}` },
         { status: 400 }
       );
     }
@@ -102,9 +102,9 @@ export async function GET() {
       { status: 200 }
     );
   } catch (error) {
-    console.error('获取文件列表错误:', error);
+    console.error('Error retrieving file list:', error);
     return NextResponse.json(
-      { error: '获取文件列表失败' },
+      { error: 'Failed to retrieve file list' },
       { status: 500 }
     );
   }
@@ -116,7 +116,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!fileName) {
       return NextResponse.json(
-        { error: '文件名未提供' },
+        { error: 'File name is required' },
         { status: 400 }
       );
     }
@@ -127,19 +127,19 @@ export async function DELETE(req: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { error: `删除失败: ${error.message}` },
+        { error: `Deletion failed: ${error.message}` },
         { status: 400 }
       );
     }
 
     return NextResponse.json(
-      { success: true, message: '文件已删除' },
+      { success: true, message: 'File deleted successfully' },
       { status: 200 }
     );
   } catch (error) {
-    console.error('删除文件错误:', error);
+    console.error('Error deleting file:', error);
     return NextResponse.json(
-      { error: '删除文件失败' },
+      { error: 'Failed to delete file' },
       { status: 500 }
     );
   }
