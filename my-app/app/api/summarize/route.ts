@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import OpenAI from 'openai';
+
+const deepseek = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: 'https://api.deepseek.com',
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +18,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Download file from Supabase Storage
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return NextResponse.json(
+        { error: 'DeepSeek API key is not configured' },
+        { status: 500 }
+      );
+    }
+
+    // 从 Supabase Storage 下载文件
     const { data, error } = await supabaseAdmin.storage
       .from('documents')
       .download(`uploads/${fileName}`);
@@ -24,85 +37,56 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Convert blob to text
-    const text = await data.text();
+    // 提取文本内容（假设文件为纯文本；若为其他格式需额外解析）
+    let text = await data.text();
 
-    // Generate AI summary (simple text processing)
-    const summary = generateAISummary(text, fileName);
+    // 限制文本长度，避免超出 API 令牌限制
+    const maxLength = 30000;
+    if (text.length > maxLength) {
+      text = text.substring(0, maxLength) + '...';
+    }
+
+    // 调用 DeepSeek API 生成摘要
+    const summary = await generateDeepSeekSummary(text);
 
     return NextResponse.json(
       {
         success: true,
         fileName,
         summary,
-        wordCount: text.split(/\s+/).length,
-        characterCount: text.length,
       },
       { status: 200 }
     );
   } catch (error) {
     console.error('Summarize error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to generate summary';
     return NextResponse.json(
-      { error: 'Failed to generate summary' },
+      { error: errorMessage },
       { status: 500 }
     );
   }
 }
 
-function generateAISummary(text: string, fileName: string): string {
-  // Extract key information from text
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || [];
-  
-  if (sentences.length === 0) {
-    return 'Unable to generate summary from this file format.';
+async function generateDeepSeekSummary(text: string): Promise<string> {
+  const completion = await deepseek.chat.completions.create({
+    model: 'deepseek-chat',
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a professional document summarization assistant. Summarize human-readable content only. Provide a concise summary (3-6 sentences) capturing main points, purpose, and key facts.',
+      },
+      {
+        role: 'user',
+        content: `Summarize the following document content: ${text}`,
+      },
+    ],
+    max_tokens: 500,
+  });
+
+  if (completion.choices && completion.choices[0] && completion.choices[0].message) {
+    return completion.choices[0].message.content || '';
   }
 
-  // Score sentences by keyword frequency
-  const words = text.toLowerCase().match(/\b\w+\b/g) || [];
-  const wordFreq: { [key: string]: number } = {};
-  
-  const stopWords = new Set([
-    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-    'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
-    'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-    'should', 'could', 'may', 'might', 'can', 'this', 'that', 'these',
-    'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which',
-    'who', 'when', 'where', 'why', 'how', 'as', 'if', 'so', 'it'
-  ]);
-
-  words.forEach(word => {
-    if (word.length > 3 && !stopWords.has(word)) {
-      wordFreq[word] = (wordFreq[word] || 0) + 1;
-    }
-  });
-
-  // Select sentences with highest-frequency words
-  const scoredSentences = sentences.map((sentence, index) => {
-    const sentenceWords = sentence.toLowerCase().match(/\b\w+\b/g) || [];
-    const score = sentenceWords.reduce((sum, word) => sum + (wordFreq[word] || 0), 0);
-    return { sentence: sentence.trim(), score, index };
-  });
-
-  // Get top 3 sentences (or fewer if text is short)
-  const topSentences = scoredSentences
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.min(3, Math.ceil(sentences.length / 3)))
-    .sort((a, b) => a.index - b.index)
-    .map(s => s.sentence);
-
-  // Format the summary
-  const fileType = fileName.split('.').pop()?.toUpperCase() || 'DOCUMENT';
-  const summary = `
-AI SUMMARY - ${fileType} File
-
-${topSentences.join(' ')}
-
-Key Statistics:
-- Total Words: ${words.length}
-- Total Sentences: ${sentences.length}
-- Average Words per Sentence: ${Math.round(words.length / sentences.length)}
-- File Size: ${(text.length / 1024).toFixed(2)} KB
-  `.trim();
-
-  return summary;
+  throw new Error('Unexpected response format from DeepSeek API');
 }
