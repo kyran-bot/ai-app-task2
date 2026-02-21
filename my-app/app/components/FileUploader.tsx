@@ -9,6 +9,7 @@ interface UploadedFile {
   name: string;
   publicUrl: string;
   created_at: string;
+  storageName?: string; // the unique name in storage
   metadata?: {
     size: number;
   };
@@ -60,9 +61,17 @@ export default function FileUploader() {
 
       const data = await response.json();
       setMessage({ type: 'success', text: `✓ File "${file.name}" uploaded successfully` });
-      
-      // 重新加载文件列表
-      await loadFiles();
+
+      // 将上传文件添加到本地客户端状态（页面刷新后会丢失）
+      setFiles((prev) => [
+        {
+          name: data.originalName || file.name,
+          publicUrl: data.fileUrl,
+          created_at: data.uploadedAt || new Date().toISOString(),
+          storageName: data.fileName,
+        },
+        ...prev,
+      ]);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
       setMessage({ type: 'error', text: `✗ ${errorMessage}` });
@@ -101,22 +110,24 @@ export default function FileUploader() {
       if (!response.ok) throw new Error('Delete failed');
 
       setMessage({ type: 'success', text: '✓ File deleted successfully' });
-      await loadFiles();
+      // 从本地状态中移除该文件
+      setFiles((prev) => prev.filter((f) => f.storageName !== fileName));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Delete failed';
       setMessage({ type: 'error', text: `✗ ${errorMessage}` });
     }
   };
 
-  const summarizeFile = async (fileName: string) => {
-    setSummaryLoading(fileName);
+  const summarizeFile = async (storageName: string | undefined) => {
+    if (!storageName) return;
+    setSummaryLoading(storageName);
     setShowSummary(true);
     
     try {
       const response = await fetch('/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName }),
+        body: JSON.stringify({ fileName: storageName }),
       });
 
       if (!response.ok) {
@@ -138,9 +149,7 @@ export default function FileUploader() {
   // 初始加载
   // Initial load
   useEffect(() => {
-    loadFiles();
-    const interval = setInterval(loadFiles, 5000); // refresh every 5s
-    return () => clearInterval(interval);
+    // Do not load persisted files from the server — files are client-side only
   }, []);
 
   const getFileIcon = (fileName: string) => {
@@ -169,7 +178,7 @@ export default function FileUploader() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">AI Summary App</h1>
-          <p className="text-gray-500 mt-2">Document Analysis with ChatGPT</p>
+          <p className="text-gray-500 mt-2">Document Summary with Deepseek</p>
         </div>
 
         {/* Main layout: Left and Right sections */}
@@ -177,10 +186,10 @@ export default function FileUploader() {
           {/* LEFT SECTION: Upload and File List */}
           <div className="space-y-6">
             {/* Upload Area */}
-            <div className="bg-white border-2 border-dashed border-blue-300 rounded-xl p-8">
+            <div className="bg-white border-2 border-dashed rounded-xl p-8" style={{ borderColor: '#E6E6FA' }}>
               <div className="text-center">
                 <div className="mb-4">
-                  <svg className="w-16 h-16 mx-auto text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                  <svg className="w-16 h-16 mx-auto" fill="currentColor" viewBox="0 0 20 20" style={{ color: '#E6E6FA' }}>
                     <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" />
                   </svg>
                 </div>
@@ -188,7 +197,7 @@ export default function FileUploader() {
                   {files.length > 0 ? `${files[0]?.name?.substring(0, 40)}...` : 'No file selected'}
                 </p>
                 <label htmlFor="file-input" className="cursor-pointer">
-                  <div className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors inline-block">
+                  <div className="font-bold py-3 px-6 rounded-lg inline-block" style={{ backgroundColor: '#E6E6FA', color: '#000' }}>
                     1. Upload File
                   </div>
                   <input
@@ -206,8 +215,8 @@ export default function FileUploader() {
               {isLoading && (
                 <div className="mt-6">
                   <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                    <span className="text-blue-600 text-sm">Uploading...</span>
+                    <div className="animate-spin rounded-full h-5 w-5" style={{ borderBottomWidth: 2, borderBottomColor: '#E6E6FA', borderWidth: 2, borderColor: '#E6E6FA' }}></div>
+                    <span style={{ color: '#E6E6FA' }} className="text-sm">Uploading...</span>
                   </div>
                 </div>
               )}
@@ -228,7 +237,7 @@ export default function FileUploader() {
 
             {/* File List */}
             <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4">
+              <div className="text-white p-4" style={{ backgroundColor: '#E6E6FA', color: '#000' }}>
                 <h2 className="font-bold">Files ({files.length})</h2>
               </div>
               
@@ -261,21 +270,21 @@ export default function FileUploader() {
                       
                       <div className="mt-3 flex gap-2">
                         <button
-                          onClick={() => summarizeFile(file.name)}
-                          disabled={summaryLoading === file.name}
-                          className="flex-1 text-sm bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => summarizeFile(file.storageName)}
+                          disabled={summaryLoading === file.storageName}
+                          className="flex-1 text-sm py-2 px-3 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ backgroundColor: '#E6E6FA', color: '#000' }}
                         >
-                          {summaryLoading === file.name ? 'Generating...' : '2. Generate AI Summary'}
+                          {summaryLoading === file.storageName ? 'Generating...' : '2. Generate AI Summary'}
                         </button>
                         <a
                           href={file.publicUrl}
-                          download
                           className="text-sm bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-3 rounded transition-colors"
                         >
-                          Download
+                          Open
                         </a>
                         <button
-                          onClick={() => deleteFile(file.name)}
+                          onClick={() => deleteFile(file.storageName || file.name)}
                           className="text-sm bg-red-100 hover:bg-red-200 text-red-700 py-2 px-3 rounded transition-colors"
                         >
                           Delete
@@ -291,7 +300,7 @@ export default function FileUploader() {
           {/* RIGHT SECTION: Summary Result */}
           <div className="flex flex-col">
             <div className="bg-white rounded-lg border border-gray-200 flex-1 overflow-hidden flex flex-col">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4">
+              <div className="text-white p-4" style={{ backgroundColor: '#E6E6FA', color: '#000' }}>
                 <h2 className="font-bold">Summary Result</h2>
               </div>
 
@@ -311,7 +320,8 @@ export default function FileUploader() {
                         setMessage({ type: 'success', text: '✓ Summary copied to clipboard' });
                       }
                     }}
-                    className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                    className="w-full mt-6 font-bold py-2 px-4 rounded-lg transition-colors"
+                    style={{ backgroundColor: '#E6E6FA', color: '#000' }}
                   >
                     Copy to Clipboard
                   </button>
@@ -331,7 +341,7 @@ export default function FileUploader() {
 
         {/* Footer */}
         <div className="mt-12 text-center text-sm text-gray-500">
-          <p>Powered by ChatGPT - Files stored in Supabase</p>
+          <p>Powered by Deepseek - Files stored in Supabase</p>
         </div>
       </div>
     </div>

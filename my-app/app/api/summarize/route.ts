@@ -74,7 +74,7 @@ async function generateDeepSeekSummary(text: string): Promise<string> {
       {
         role: 'system',
         content:
-          'You are a professional document summarization assistant. Summarize human-readable content only. Provide a concise summary (3-6 sentences) capturing main points, purpose, and key facts.',
+          'You are a professional document summarization assistant. Summarize human-readable content only. Provide a concise summary (3-6 sentences) capturing main points, purpose, and key facts. Respond in English.',
       },
       {
         role: 'user',
